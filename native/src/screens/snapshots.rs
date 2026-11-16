@@ -119,14 +119,6 @@ fn interaction_fixture(name: &str) -> &'static crate::companions::Effects {
     }
 }
 
-fn counts_fixture(name: &str) -> crate::reset_history::Counts {
-    if name.contains("reset-counts") {
-        crate::reset_history::Counts { claude_5h: 3, claude_weekly: 1, codex_5h: 8, codex_weekly: 2 }
-    } else {
-        Default::default()
-    }
-}
-
 fn render_inner(case: Case, draft: Prefs) {
     freeze_clock();
     let session = case.snap.limits.as_ref().and_then(|l| crate::components::meter::live(&l.session, None));
@@ -158,7 +150,6 @@ fn render_inner(case: Case, draft: Prefs) {
             pet: &pet,
             codex_skin: codex_fixture_skin(case.name),
             effects: interaction_fixture(case.name),
-            reset_counts: counts_fixture(case.name),
             logos: &logos,
             menu_bar: case.name.ends_with("menu-bar"),
             heads_up: 80.0,
@@ -202,7 +193,6 @@ fn render_inner(case: Case, draft: Prefs) {
             pet,
             codex_skin: codex_fixture_skin(case.name),
             effects: interaction_fixture(case.name),
-            reset_counts: counts_fixture(case.name),
             logos,
             menu_bar: case.name.ends_with("menu-bar"),
             heads_up: 80.0,
@@ -521,13 +511,13 @@ fn pet_only_gift_no_caption_collision() {
     });
 }
 #[test]
-fn compact_separately_observed_reset_history() {
-    render(Case {
-        name: "compact-reset-counts",
-        snap: with_codex(snapshot(usage(false, None), Some(limits(21.0, 47.0))), false),
-        mood: Mood::Idle,
-        view: compact_view(),
-    });
+fn compact_shows_projected_resets_before_weekly() {
+    let mut snap = with_codex(snapshot(usage(false, None), Some(limits(21.0, 47.0))), false);
+    if let Some(limits) = snap.limits.as_mut() {
+        limits.session.reset_ms = Some(H);
+        limits.week.reset_ms = Some(13 * H);
+    }
+    render(Case { name: "compact-reset-projection", snap, mood: Mood::Idle, view: compact_view() });
 }
 
 #[test]

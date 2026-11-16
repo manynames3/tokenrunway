@@ -120,8 +120,6 @@ pub struct Frame<'a> {
     pub pet: &'a Pet,
     pub codex_skin: &'static crate::components::skins::Skin,
     pub effects: &'a crate::companions::Effects,
-    /// Real 5h and weekly reset transitions observed since tracking began.
-    pub reset_counts: crate::reset_history::Counts,
     pub logos: &'a Logos,
     /// the panel is the menu bar's popover: no minimize, no pet-only
     pub menu_bar: bool,

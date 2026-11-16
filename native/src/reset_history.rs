@@ -16,12 +16,6 @@ pub struct Counts {
     pub codex_weekly: u32,
 }
 
-impl Counts {
-    pub fn pair(self, codex: bool) -> (u32, u32) {
-        if codex { (self.codex_5h, self.codex_weekly) } else { (self.claude_5h, self.claude_weekly) }
-    }
-}
-
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct Seen {

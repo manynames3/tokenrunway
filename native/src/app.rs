@@ -494,8 +494,9 @@ impl App {
         if let Some(l) = &snap.limits {
             let week = live(&l.week, snap.limits_at);
             lines.push(line("Claude weekly", week.map(|w| w.0), week.and_then(|w| w.1)));
-            let (five, weekly) = self.history.counts().pair(false);
-            lines.push(format!("Claude resets observed · 5h {five} · weekly {weekly}"));
+            if let Some(n) = crate::format::projected_five_hour_resets(session.and_then(|s| s.1), week.and_then(|w| w.1)) {
+                lines.push(format!("Claude ≈{n} more 5h resets before weekly"));
+            }
             for sc in &l.scoped {
                 let w = live(&crate::auth::Window { pct: sc.pct, reset_ms: sc.reset_ms }, snap.limits_at);
                 lines.push(line(&format!("{} weekly", sc.label), w.map(|w| w.0), w.and_then(|w| w.1)));
@@ -509,8 +510,9 @@ impl App {
             if !c.weekly_only {
                 let (p, r) = ext(&c.weekly);
                 lines.push(line("Codex weekly", p, r));
-                let (five, weekly) = self.history.counts().pair(true);
-                lines.push(format!("Codex resets observed · 5h {five} · weekly {weekly}"));
+                if let Some(n) = crate::format::projected_five_hour_resets(c.session.as_ref().and_then(|s| s.reset_ms), r) {
+                    lines.push(format!("Codex ≈{n} more 5h resets before weekly"));
+                }
             }
         }
         if let Some(c) = &snap.cursor {
@@ -809,7 +811,6 @@ impl eframe::App for App {
             pet: &self.pet,
             codex_skin,
             effects: &self.effects,
-            reset_counts: self.history.counts(),
             logos: &self.logos,
             menu_bar: self.prefs.menu_bar,
             heads_up: self.prefs.heads_up.min(self.prefs.near_limit) as f64,

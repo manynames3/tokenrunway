@@ -192,12 +192,13 @@ pub fn draw(ui: &Ui, ctx: &Context, f: &Frame) -> Vec<Action> {
         let names = if provider == Provider::Cursor { ["Plan", "API"] } else { ["5h", "Week"] };
         draw_window(p, left, right, y + 19.0, names[0], rows[0], provider);
         draw_window(p, left, right, y + 47.0, names[1], rows[1], provider);
-        if provider != Provider::Cursor {
-            let (five, week) = f.reset_counts.pair(provider == Provider::Codex);
+        if provider != Provider::Cursor
+            && let Some(count) = crate::format::projected_five_hour_resets(rows[0].1, rows[1].1)
+        {
             p.text(
                 Pos2::new(right, y + 80.0),
                 Align2::RIGHT_CENTER,
-                format!("observed resets · 5h {five} · week {week}"),
+                format!("≈{count} more 5h resets before weekly"),
                 FontId::proportional(text::TINY),
                 color::FG_SUB,
             );

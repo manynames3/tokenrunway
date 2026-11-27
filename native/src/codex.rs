@@ -393,7 +393,9 @@ impl Codex {
         out
     }
 
-    // Rollouts only grow: a poll reads just the bytes appended since the last.
+    // Rollouts only grow: a poll reads just the bytes appended since the
+    // last, a chunk at a time, so a rollout of many gigabytes never sits in
+    // memory whole (reading it in one go once took 8 GB).
     fn read_file(&mut self, path: &Path, size: u64, mtime: i64) -> &Summary {
         let sum = self.files.entry(path.to_path_buf()).or_default();
         if size < sum.offset {
@@ -403,19 +405,26 @@ impl Codex {
             && let Ok(mut f) = File::open(path)
             && f.seek(SeekFrom::Start(sum.offset)).is_ok()
         {
-            let mut buf = std::mem::take(&mut sum.rest);
-            if f.take(size - sum.offset).read_to_end(&mut buf).is_ok() {
-                sum.offset = size;
-                // the last piece may be a line still being written
-                let end = memchr::memrchr(b'\n', &buf);
-                let (whole, rest) = match end {
-                    Some(e) => (buf[..e].to_vec(), buf[e + 1..].to_vec()),
-                    None => (vec![], buf),
+            while sum.offset < size {
+                let mut chunk = vec![0u8; crate::usage::CHUNK.min(size - sum.offset) as usize];
+                let n = match f.read(&mut chunk) {
+                    Ok(0) | Err(_) => break, // retry from the offset next poll
+                    Ok(n) => n,
                 };
-                sum.rest = rest;
-                for line in whole.split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
-                    ingest_line(sum, line);
+                sum.offset += n as u64;
+                let mut buf = std::mem::take(&mut sum.rest);
+                buf.extend_from_slice(&chunk[..n]);
+                // the last piece may be a line still being written
+                match memchr::memrchr(b'\n', &buf) {
+                    Some(e) => {
+                        for line in buf[..e].split(|&b| b == b'\n').filter(|l| !l.is_empty()) {
+                            ingest_line(sum, line);
+                        }
+                        sum.rest = buf[e + 1..].to_vec();
+                    }
+                    None => sum.rest = buf,
                 }
+                crate::usage::cap_partial_line(&mut sum.rest);
             }
         }
         sum.mtime = mtime;

@@ -16,7 +16,20 @@ const DAYS: usize = 30;
 // how many projects the panel ranks before folding the rest into `other`
 const TOP_PROJECTS: usize = 5;
 const SESSION_MS: i64 = 5 * 3600 * 1000;
-const CHUNK: u64 = 8 * 1024 * 1024;
+pub(crate) const CHUNK: u64 = 8 * 1024 * 1024;
+
+/// The longest line a log reader keeps waiting for its end. Usage lines are
+/// small; a longer one is a pasted image or a tool's output, and holding it
+/// would grow without bound.
+pub(crate) const MAX_LINE: usize = if cfg!(test) { 4096 } else { 64 * 1024 * 1024 };
+
+/// Drop a partial line that has grown past `MAX_LINE`. The rest of it, up to
+/// its newline, then reads as a fragment that doesn't parse and is skipped.
+pub(crate) fn cap_partial_line(rest: &mut Vec<u8>) {
+    if rest.len() > MAX_LINE {
+        *rest = Vec::new();
+    }
+}
 const LABEL_MAX: usize = 26;
 // a turn left open this long without a write was abandoned (a closed
 // terminal, a crash) — or a permission prompt nobody answered
@@ -684,6 +697,7 @@ fn parse_file<'a>(cache: &'a mut HashMap<PathBuf, FileState>, path: &Path, size:
         // cut at the last newline in bytes, so a split UTF-8 character survives
         let Some(end) = memchr::memrchr(b'\n', &buf) else {
             state.rest = buf;
+            cap_partial_line(&mut state.rest);
             continue;
         };
         state.rest = buf[end + 1..].to_vec();

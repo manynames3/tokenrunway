@@ -379,3 +379,26 @@ fn a_rollout_without_tasks_falls_back_to_the_last_minute() {
     fx.write("rollout-a.jsonl", &[token_count("2026-09-12T19:58:00Z", 10, codex_limits())], now() - 2 * 60_000);
     assert!(!fx.codex.get_usage(now()).unwrap().active);
 }
+
+#[test]
+fn a_huge_line_is_skipped_without_holding_it_in_memory() {
+    let mut fx = Fx::new();
+    // a blob longer than a whole chunk, then a usage line
+    let blob = format!("{{\"type\":\"response_item\",\"payload\":\"{}\"}}", "x".repeat(crate::usage::CHUNK as usize + 1024 * 1024));
+    let path = fx.write("rollout-huge.jsonl", &[blob, token_count("2026-09-12T19:59:00Z", 777, codex_limits())], now());
+    let size = fs::metadata(&path).unwrap().len();
+    let sum = fx.codex.read_file(&path, size, now());
+    assert_eq!(sum.last_total, 777);
+    assert!(sum.rest.len() <= crate::usage::MAX_LINE);
+    assert_eq!(sum.offset, size);
+}
+
+#[test]
+fn a_partial_line_past_the_cap_is_dropped() {
+    let mut rest = vec![b'x'; crate::usage::MAX_LINE + 1];
+    crate::usage::cap_partial_line(&mut rest);
+    assert!(rest.is_empty());
+    let mut short = vec![b'x'; 10];
+    crate::usage::cap_partial_line(&mut short);
+    assert_eq!(short.len(), 10);
+}

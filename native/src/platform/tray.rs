@@ -37,13 +37,24 @@ pub struct Tray {
     /// the fine print in the Details submenu, as last shown
     details: Vec<String>,
     wall_menu: WallMenu,
-    open: MenuItem,
-    floating: MenuItem,
-    wall: CheckMenuItem,
-    copy: MenuItem,
-    quit: MenuItem,
+    /// when the menu was last rebuilt, to cap how often it can be
+    built: Option<std::time::Instant>,
     events: Arc<Mutex<Vec<TrayEvent>>>,
 }
+
+// The actions keep fixed ids and are made afresh with every menu. An item
+// appended to menu after menu keeps a native copy for each one, forever:
+// reusing them across rebuilds leaked a little memory per rebuild.
+const OPEN: &str = "tokenrunway.open";
+const FLOATING: &str = "tokenrunway.floating";
+const WALL: &str = "tokenrunway.wall";
+const COPY: &str = "tokenrunway.copy";
+const QUIT: &str = "tokenrunway.quit";
+
+/// The least time between two rebuilds of the menu. A row that changes on
+/// every frame, from any cause, then costs a rebuild every few seconds
+/// rather than sixty a second.
+const REBUILD_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How close a limit is to running out; picks the row's color.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -87,7 +98,9 @@ impl Row {
             group: group.into(),
             label: label.into(),
             pct,
-            clock: live.map(crate::format::clock),
+            // to the nearest minute: a reset right on the minute would
+            // otherwise flip between two clock times from frame to frame
+            clock: live.map(|ms| crate::format::clock(ms + 30_000)),
             left: live.filter(|_| countdown).map(crate::format::countdown),
             tone: Tone::of(pct, warn, fire),
         }
@@ -217,16 +230,7 @@ fn row_item(row: &Row) -> Option<MenuItem> {
 }
 
 // the menu: the limit rows (read-only), the fine print, then the actions
-/// The menu's action items, built once so their ids stay put.
-struct Actions<'a> {
-    open: &'a MenuItem,
-    floating: &'a MenuItem,
-    wall: &'a CheckMenuItem,
-    copy: &'a MenuItem,
-    quit: &'a MenuItem,
-}
-
-fn build_menu(rows: &[Row], details: &[String], wall: &WallMenu, a: &Actions) -> Option<Menu> {
+fn build_menu(rows: &[Row], details: &[String], wall: &WallMenu) -> Option<Menu> {
     let menu = Menu::new();
     for r in rows {
         if let Some(item) = row_item(r) {
@@ -247,9 +251,9 @@ fn build_menu(rows: &[Row], details: &[String], wall: &WallMenu, a: &Actions) ->
     if !rows.is_empty() || !details.is_empty() {
         menu.append(&PredefinedMenuItem::separator()).ok()?;
     }
-    menu.append_items(&[a.open, a.floating, &PredefinedMenuItem::separator()]).ok()?;
-    a.wall.set_checked(wall.on);
-    menu.append(a.wall).ok()?;
+    let (open, floating) = (MenuItem::with_id(OPEN, "Open TokenRunway", true, None), MenuItem::with_id(FLOATING, "Floating only", true, None));
+    menu.append_items(&[&open, &floating, &PredefinedMenuItem::separator()]).ok()?;
+    menu.append(&CheckMenuItem::with_id(WALL, "Wall display (iPad, other screens)", true, wall.on, None)).ok()?;
     for l in &wall.lines {
         let item = status_item(l);
         #[cfg(target_os = "macos")]
@@ -257,9 +261,9 @@ fn build_menu(rows: &[Row], details: &[String], wall: &WallMenu, a: &Actions) ->
         menu.append(&item).ok()?;
     }
     if wall.link.is_some() {
-        menu.append(a.copy).ok()?;
+        menu.append(&MenuItem::with_id(COPY, "Copy wall display link", true, None)).ok()?;
     }
-    menu.append_items(&[&PredefinedMenuItem::separator(), a.quit]).ok()?;
+    menu.append_items(&[&PredefinedMenuItem::separator(), &MenuItem::with_id(QUIT, "Quit TokenRunway", true, None)]).ok()?;
     Some(menu)
 }
 
@@ -272,15 +276,17 @@ fn decode(bytes: &[u8]) -> Option<tray_icon::Icon> {
     tray_icon::Icon::from_rgba(buf[..info.buffer_size()].to_vec(), info.width, info.height).ok()
 }
 
+/// Whether a changed menu may be rebuilt now: the first time, after
+/// `REBUILD_EVERY`, or when the wall display's switch changed.
+fn should_rebuild(since_last: Option<std::time::Duration>, switch_changed: bool) -> bool {
+    switch_changed || since_last.is_none_or(|t| t >= REBUILD_EVERY)
+}
+
 impl Tray {
     /// Put the icon in the menu bar. Call on the main thread.
     pub fn new(ctx: &Context) -> Option<Self> {
         let events: Arc<Mutex<Vec<TrayEvent>>> = Arc::default();
-        let (open, floating, quit) =
-            (MenuItem::new("Open TokenRunway", true, None), MenuItem::new("Floating only", true, None), MenuItem::new("Quit TokenRunway", true, None));
-        let wall = CheckMenuItem::new("Wall display (iPad, other screens)", true, false, None);
-        let copy = MenuItem::new("Copy wall display link", true, None);
-        let menu = build_menu(&[], &[], &WallMenu::default(), &Actions { open: &open, floating: &floating, wall: &wall, copy: &copy, quit: &quit })?;
+        let menu = build_menu(&[], &[], &WallMenu::default())?;
         let builder = TrayIconBuilder::new();
         // macOS tints a template icon for the menu bar's theme
         #[cfg(target_os = "macos")]
@@ -296,27 +302,24 @@ impl Tray {
             .build()
             .ok()?;
         let (q, c) = (events.clone(), ctx.clone());
-        let ids = (open.id().clone(), floating.id().clone(), quit.id().clone(), wall.id().clone(), copy.id().clone());
         MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-            let ev = if e.id == ids.0 {
-                TrayEvent::Open
-            } else if e.id == ids.1 {
-                TrayEvent::Floating
-            } else if e.id == ids.2 {
+            let ev = match e.id.as_ref() {
+                OPEN => TrayEvent::Open,
+                FLOATING => TrayEvent::Floating,
                 // no frame may come to answer it while the window is hidden
-                std::process::exit(0);
-            } else if e.id == ids.3 || e.id == ids.4 {
+                QUIT => std::process::exit(0),
                 // handled here, not in a frame: a hidden window gets none,
                 // and the server needs no window to start or stop
-                if e.id == ids.3 {
-                    crate::web::toggle();
-                } else {
-                    crate::web::copy_link();
+                WALL | COPY => {
+                    if e.id.as_ref() == WALL {
+                        crate::web::toggle();
+                    } else {
+                        crate::web::copy_link();
+                    }
+                    c.request_repaint();
+                    return;
                 }
-                c.request_repaint();
-                return;
-            } else {
-                return;
+                _ => return,
             };
             // a hidden window gets no frames: show it so the next one
             // answers, once the menu has closed
@@ -326,21 +329,25 @@ impl Tray {
             }
             c.request_repaint();
         }));
-        Some(Tray { icon, title: String::new(), rows: vec![], details: vec![], wall_menu: WallMenu::default(), open, floating, wall, copy, quit, events })
+        Some(Tray { icon, title: String::new(), rows: vec![], details: vec![], wall_menu: WallMenu::default(), built: None, events })
     }
 
     /// The rows at the top of the menu and the fine print under Details;
-    /// rebuilt only when what they show changes.
+    /// rebuilt only when what they show changes, and at most every few
+    /// seconds (the wall display's switch answers at once).
     pub fn set_rows(&mut self, rows: Vec<Row>, details: Vec<String>, wall: WallMenu) {
         if rows == self.rows && details == self.details && wall == self.wall_menu {
             return;
         }
-        let actions = Actions { open: &self.open, floating: &self.floating, wall: &self.wall, copy: &self.copy, quit: &self.quit };
-        if let Some(menu) = build_menu(&rows, &details, &wall, &actions) {
+        if !should_rebuild(self.built.map(|t| t.elapsed()), wall != self.wall_menu) {
+            return;
+        }
+        if let Some(menu) = build_menu(&rows, &details, &wall) {
             self.icon.set_menu(Some(Box::new(menu)));
             self.rows = rows;
             self.details = details;
             self.wall_menu = wall;
+            self.built = Some(std::time::Instant::now());
         }
     }
 
@@ -421,6 +428,17 @@ mod tests {
     fn headers_are_macos_only_and_text_rows_pass_through() {
         assert_eq!(Row::Header("Claude".into()).plain(), None);
         assert_eq!(Row::Text("hello".into()).plain().as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn the_menu_is_rebuilt_at_most_every_few_seconds() {
+        use std::time::Duration;
+        assert!(should_rebuild(None, false));
+        assert!(!should_rebuild(Some(Duration::from_millis(16)), false));
+        assert!(!should_rebuild(Some(Duration::from_secs(4)), false));
+        assert!(should_rebuild(Some(Duration::from_secs(5)), false));
+        // the wall display's switch answers at once
+        assert!(should_rebuild(Some(Duration::from_millis(16)), true));
     }
 
     #[test]

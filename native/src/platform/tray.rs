@@ -95,6 +95,7 @@ impl Row {
 
     /// The row as one plain line: what Windows and Linux show, and what a
     /// macOS item falls back to. A header has none there.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub fn plain(&self) -> Option<String> {
         match self {
             Row::Header(_) => None,

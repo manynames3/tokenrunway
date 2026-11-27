@@ -61,6 +61,24 @@ pub fn projected_five_hour_resets(session_ms: Option<i64>, week_ms: Option<i64>)
     Some((1 + (week - session - 1) / FIVE_HOURS).min(40) as u32)
 }
 
+/// Dollars as the menu reads them: cents under $100, whole dollars with
+/// thousands separators from there ("$1.67", "$1,146").
+pub fn usd(value: f64) -> String {
+    if value < 100.0 {
+        return format!("${value:.2}");
+    }
+    let whole = value.round() as u64;
+    let digits = whole.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    format!("${out}")
+}
+
 /// "37.8M", "1.12B".
 pub fn tokens(n: u64) -> String {
     match n {
@@ -84,6 +102,11 @@ mod tests {
         assert_eq!(tokens(37_800_000), "37.8M");
         assert_eq!(tokens(1_120_000_000), "1.12B");
         assert_eq!(tokens(950), "950");
+        assert_eq!(usd(1.67), "$1.67");
+        assert_eq!(usd(99.99), "$99.99");
+        assert_eq!(usd(100.0), "$100");
+        assert_eq!(usd(1145.81), "$1,146");
+        assert_eq!(usd(1_234_567.4), "$1,234,567");
         let h = 3_600_000;
         assert_eq!(projected_five_hour_resets(Some(h), Some(13 * h)), Some(3));
         assert_eq!(projected_five_hour_resets(Some(4 * h), Some(3 * h)), Some(0));

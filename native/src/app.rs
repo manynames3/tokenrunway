@@ -173,6 +173,7 @@ impl App {
         let settings = Settings::load();
         let (data, commands) = poller::spawn(cc.egui_ctx.clone(), settings.clone());
         crate::auto_continue::spawn(data.clone());
+        crate::web::init(&data);
         App {
             pet: Pet::new(&cc.egui_ctx),
             effects: crate::companions::Effects::new(),
@@ -468,10 +469,16 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     }
 
+    /// A long-window row's name: "Week", or "Limit" when its reset is further
+    /// out than a week can be (a monthly or plan window).
+    fn window_label(reset_ms: Option<i64>) -> &'static str {
+        if reset_ms.is_some_and(|ms| ms > 8 * 86_400_000) { "Limit" } else { "Week" }
+    }
+
     /// Floating or in the menu bar: put the icon up or take it down, and
     /// answer what was clicked there.
     fn menu_bar(&mut self, ctx: &Context, snap: &Snapshot, session: Option<(f64, Option<i64>)>) {
-        use crate::platform::tray::{Tray, TrayEvent, line};
+        use crate::platform::tray::{Row, Tray, TrayEvent};
         // In "Both" mode the macOS status icon and draggable window coexist.
         let wanted = (self.prefs.menu_bar || self.prefs.menu_bar_alongside) && self.leaving.is_none();
         if wanted && self.tray.is_none() {
@@ -489,90 +496,91 @@ impl App {
         let sessions: Vec<_> = crate::screens::sessions(snap, session).into_iter().map(|s| s.1).collect();
         let text = crate::platform::tray::title_hottest(&sessions, self.settings.fire_threshold);
         tray.set_title(&text);
-        // the menu leads with the limits, as the panel does
-        let mut lines = vec![line("Claude 5h", session.map(|s| s.0), session.and_then(|s| s.1))];
+        // the menu leads with the limits, as the panel does: a bar and a
+        // reset per window, amber at the heads-up level and red where the
+        // pet catches fire, the same thresholds as the alerts and the 🔥
+        let (warn, fire) = (self.prefs.heads_up as f64, self.settings.fire_threshold);
+        let meter =
+            |group: &str, label: &str, pct: Option<f64>, reset_ms: Option<i64>, countdown: bool| Row::meter(group, label, pct, reset_ms, countdown, warn, fire);
+        let mut rows = vec![Row::Header("Claude".into())];
+        // the fine print, kept under Details so the menu stays short
+        let mut details: Vec<String> = vec![];
+        rows.push(meter("Claude", "5h", session.map(|s| s.0), session.and_then(|s| s.1), true));
         if let Some(l) = &snap.limits {
             let week = live(&l.week, snap.limits_at);
-            lines.push(line("Claude weekly", week.map(|w| w.0), week.and_then(|w| w.1)));
+            rows.push(meter("Claude", "Week", week.map(|w| w.0), week.and_then(|w| w.1), false));
             if let Some(n) = crate::format::projected_five_hour_resets(session.and_then(|s| s.1), week.and_then(|w| w.1)) {
-                lines.push(format!("Claude ≈{n} more 5h resets before weekly"));
+                details.push(format!("Claude ≈{n} more 5h windows before the weekly reset"));
             }
             for sc in &l.scoped {
                 let w = live(&crate::auth::Window { pct: sc.pct, reset_ms: sc.reset_ms }, snap.limits_at);
-                lines.push(line(&format!("{} weekly", sc.label), w.map(|w| w.0), w.and_then(|w| w.1)));
+                rows.push(meter("Claude", &sc.label, w.map(|w| w.0), w.and_then(|w| w.1), false));
             }
         }
         // the other services, each with its own windows
         let ext = |w: &Option<crate::codex::Window>| (w.as_ref().and_then(|w| w.pct), w.as_ref().and_then(|w| w.reset_ms));
         if let Some(c) = &snap.codex {
+            rows.push(Row::Header("Codex".into()));
             let (p, r) = ext(&c.session);
-            lines.push(line(if c.weekly_only { "Codex weekly" } else { "Codex session" }, p, r));
-            if !c.weekly_only {
+            if c.weekly_only {
+                rows.push(meter("Codex", Self::window_label(r), p, r, false));
+            } else {
+                rows.push(meter("Codex", "5h", p, r, true));
                 let (p, r) = ext(&c.weekly);
-                lines.push(line("Codex weekly", p, r));
+                rows.push(meter("Codex", Self::window_label(r), p, r, false));
                 if let Some(n) = crate::format::projected_five_hour_resets(c.session.as_ref().and_then(|s| s.reset_ms), r) {
-                    lines.push(format!("Codex ≈{n} more 5h resets before weekly"));
+                    details.push(format!("Codex ≈{n} more 5h windows before the weekly reset"));
                 }
             }
         }
         if let Some(c) = &snap.cursor {
+            rows.push(Row::Header("Cursor".into()));
             let (p, r) = ext(&c.session);
-            lines.push(line("Cursor usage", p, r));
+            rows.push(meter("Cursor", "Usage", p, r, false));
             let (p, r) = ext(&c.api);
-            lines.push(line("Cursor API", p, r));
+            rows.push(meter("Cursor", "API", p, r, false));
         }
         // Keep spending detail in the menu bar, never on the compact
         // floating widget. This is the estimated API-equivalent value of
         // locally observed tokens, not a cash charge or subscription credit.
         if snap.usage.is_some() || snap.codex.is_some() {
-            let empty = "—".to_string();
-            let money = |cost: f64, tokens: u64, unpriced: u64| -> String {
-                if tokens == 0 {
-                    return "$0.00".into();
-                }
-                if cost == 0.0 && unpriced > 0 {
-                    return "unpriced".into();
-                }
-                crate::spend::amount(cost, unpriced)
-            };
+            // (cost, tokens with no price) for one period (0 today, 1 last 7
+            // days, 2 last 30 days)
             let claude = |period: usize| {
                 snap.usage
                     .as_ref()
-                    .map(|u| {
-                        let cost = match period {
-                            0 => u.cost_today,
-                            1 => u.cost_7d,
-                            _ => u.cost_30d,
-                        };
-                        money(cost, if period == 0 { u.today_tokens } else { u.month_tokens }, u.unpriced_tokens_30d)
-                    })
-                    .unwrap_or_else(|| empty.clone())
+                    .map(|u| ([u.cost_today, u.cost_7d, u.cost_30d][period], [u.unpriced_tokens_today, u.unpriced_tokens_7d, u.unpriced_tokens_30d][period]))
             };
             let codex = |period: usize| {
                 snap.codex
                     .as_ref()
-                    .map(|c| {
-                        let cost = match period {
-                            0 => c.cost_today,
-                            1 => c.cost_7d,
-                            _ => c.cost_30d,
-                        };
-                        money(cost, if period == 0 { c.tokens_today } else { c.month_tokens }, c.unpriced_tokens_30d)
-                    })
-                    .unwrap_or_else(|| empty.clone())
+                    .map(|c| ([c.cost_today, c.cost_7d, c.cost_30d][period], [c.unpriced_tokens_today, c.unpriced_tokens_7d, c.unpriced_tokens_30d][period]))
             };
-            lines.push("Estimated API value · local tokens".into());
-            for (period, label) in ["Today", "Last 7 days", "Last 30 days"].iter().enumerate() {
-                lines.push(format!("{label} · Claude {} · Codex {}", claude(period), codex(period)));
+            let show = |(cost, unpriced): (f64, u64)| -> String { if cost == 0.0 && unpriced > 0 { "unpriced".into() } else { crate::format::usd(cost) } };
+            let total = |period: usize| {
+                let parts = [claude(period), codex(period)];
+                show((parts.iter().flatten().map(|p| p.0).sum(), parts.iter().flatten().map(|p| p.1).sum()))
+            };
+            rows.push(Row::Header("API-rate value · not billed".into()));
+            rows.push(Row::Text(format!("{} today · {} 7d · {} 30d", total(0), total(1), total(2))));
+            for (name, per) in [("Claude", &claude as &dyn Fn(usize) -> Option<(f64, u64)>), ("Codex", &codex)] {
+                if per(0).is_some() {
+                    details.push(format!(
+                        "{name}  {} · {} · {}  (today · 7d · 30d)",
+                        show(per(0).unwrap_or_default()),
+                        show(per(1).unwrap_or_default()),
+                        show(per(2).unwrap_or_default())
+                    ));
+                }
             }
             let excluded = snap.usage.as_ref().map_or(0, |u| u.unpriced_tokens_30d) + snap.codex.as_ref().map_or(0, |c| c.unpriced_tokens_30d);
             if excluded > 0 {
-                lines.push(format!("Partial estimate · {excluded} tokens lack model pricing"));
+                details.push(format!("Partial estimate: {excluded} tokens in 30 days lack model pricing"));
             }
-            lines.push("Not subscription spend or purchased credits".into());
+            details.push("Estimate from local logs; not subscription spend or purchased credits".into());
         }
-        lines.push("Remaining reset credits · not reported by providers".into());
-        tray.set_lines(lines);
+        details.push("Remaining reset credits are not reported by providers".into());
+        tray.set_rows(rows, details, crate::web::menu());
         let events = tray.take_events();
         let icon = tray.rect();
         for e in events {

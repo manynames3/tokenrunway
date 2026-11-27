@@ -30,6 +30,7 @@ mod ui;
 mod updates;
 mod usage;
 mod voice;
+mod web;
 
 fn main() -> eframe::Result {
     // `tokenrunway --usage`: print one reading of the local logs as JSON (dev aid)

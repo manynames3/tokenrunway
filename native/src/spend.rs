@@ -71,11 +71,6 @@ pub fn codex(model: &str, input: u64, output: u64, cached: u64, cache_write: u64
     Some(rates.value(uncached, cached, cache_write, 0, output))
 }
 
-/// A dollar sign with a partial-coverage marker, never a fake credit balance.
-pub fn amount(usd: f64, unpriced_tokens: u64) -> String {
-    if unpriced_tokens > 0 { format!("≥${usd:.2}") } else { format!("${usd:.2}") }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +89,5 @@ mod tests {
     fn unknown_models_are_not_valued_as_zero() {
         assert_eq!(codex("codex-auto-review", 10_000, 50, 0, 0), None);
         assert_eq!(claude("unknown", 10_000, 0, 0, 0, 0), None);
-        assert_eq!(amount(12.0, 1), "≥$12.00");
     }
 }

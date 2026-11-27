@@ -1,0 +1,119 @@
+/* TokenRunway wall display. Plain CSS for old Safari: no variables, no grid,
+   flexbox with -webkit- prefixes. Colours follow the app's theme. The page
+   answers one question from across the room: can I keep coding? */
+* { box-sizing: border-box; -webkit-box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: #120d0a; color: #eeeae5; }
+body {
+  font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding: 18px 20px 20px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  border-top: 6px solid #3a2e25;
+}
+/* fill the screen: the cards stretch, the footer sits at the bottom */
+.page { height: 100%; display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-orient: vertical; -webkit-flex-direction: column; flex-direction: column; }
+/* the whole screen leans toward the state, so it reads from across a room */
+body.pace { border-top-color: #b4a18a; }
+body.warn { border-top-color: #e5b55d; background: #17120a; }
+body.hot { border-top-color: #ee705e; background: #1a0f0b; }
+body.out { border-top-color: #ee705e; background: #1d0e0b; }
+
+.verdict { font-size: 30px; line-height: 1.3; color: #d0cac2; margin: 2px 4px 16px; }
+.verdict b { color: #eeeae5; font-weight: 600; }
+.clear .verdict b { color: #7ec77d; }
+.pace .verdict b { color: #e3d0b2; }
+.warn .verdict b { color: #e5b55d; }
+.hot .verdict b, .out .verdict b { color: #ee705e; }
+
+.grid { display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: -8px;
+  -webkit-box-flex: 1; -webkit-flex: 1 1 auto; flex: 1 1 auto; }
+.card { position: relative; background: #221913; border: 1px solid #2f241c; border-radius: 18px;
+  padding: 18px 22px 20px; margin: 8px;
+  -webkit-box-flex: 1; -webkit-flex: 1 1 320px; flex: 1 1 320px; min-width: 300px;
+  display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-orient: vertical; -webkit-flex-direction: column; flex-direction: column; }
+/* the smaller limits sit at the card's foot */
+.rows { padding-top: 4px; }
+.card.codex { background: #1b211c; border-color: #263027; }
+.card.cursor { background: #1a1d23; border-color: #262b33; }
+.card.warn { border-color: #6b5527; }
+.card.hot, .card.out { border-color: #7a3a2e; }
+
+.head { display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  height: 28px; margin-bottom: 10px; }
+.name { font-size: 19px; font-weight: 600; color: #eee4d9; }
+.plan { font-size: 12px; color: #aaa59d; margin-left: 8px; text-transform: capitalize;
+  border: 1px solid #3a2e25; border-radius: 9px; padding: 1px 8px; }
+.note { color: #d0cac2; font-size: 17px; margin: 18px 0 8px; }
+.stale { color: #e5b55d; font-size: 13px; margin-top: 12px; }
+
+/* the pet: one strip of 128px pixel-art frames, stepped by CSS. Sizes are
+   in percent of the strip, so the pet can be drawn at any size. */
+.stage { -webkit-box-flex: 1; -webkit-flex: 1 1 auto; flex: 1 1 auto;
+  display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-pack: end; -webkit-justify-content: flex-end; justify-content: flex-end;
+  -webkit-box-align: end; -webkit-align-items: flex-end; align-items: flex-end; min-height: 0; }
+.pet { width: 168px; height: 168px; background-repeat: no-repeat; background-size: auto 100%;
+  image-rendering: -webkit-optimize-contrast; image-rendering: pixelated; }
+.mood-working { -webkit-animation: f8 1.6s steps(8) infinite; animation: f8 1.6s steps(8) infinite; }
+.mood-idle { -webkit-animation: f16 6.4s steps(16) infinite; animation: f16 6.4s steps(16) infinite; }
+.mood-sleeping { -webkit-animation: f4 3.2s steps(4) infinite; animation: f4 3.2s steps(4) infinite; }
+.mood-fire { -webkit-animation: f4 .5s steps(4) infinite; animation: f4 .5s steps(4) infinite; }
+.mood-tired { -webkit-animation: f4 1.8s steps(4) infinite; animation: f4 1.8s steps(4) infinite; }
+/* frame k of n sits at k/(n-1) of the way along */
+@-webkit-keyframes f4 { from { background-position: 0 0; } to { background-position: 133.333% 0; } }
+@keyframes f4 { from { background-position: 0 0; } to { background-position: 133.333% 0; } }
+@-webkit-keyframes f8 { from { background-position: 0 0; } to { background-position: 114.286% 0; } }
+@keyframes f8 { from { background-position: 0 0; } to { background-position: 114.286% 0; } }
+@-webkit-keyframes f16 { from { background-position: 0 0; } to { background-position: 106.667% 0; } }
+@keyframes f16 { from { background-position: 0 0; } to { background-position: 106.667% 0; } }
+
+.label { font-size: 13px; color: #aaa59d; text-transform: uppercase; letter-spacing: .8px; }
+.big { font-size: 128px; font-weight: 300; line-height: 1.02; margin: 0 0 12px;
+  font-variant-numeric: tabular-nums; color: #eeeae5; letter-spacing: -1px; }
+.big small { font-size: 44px; color: #aaa59d; margin-left: 3px; letter-spacing: 0; }
+.big.out { font-size: 96px; margin: 8px 0 4px; }
+.big.out small { display: block; font-size: 22px; margin: 4px 0 -6px; color: #b4a18a; letter-spacing: 0; }
+.when { font-size: 18px; color: #b4a18a; margin-top: 10px; }
+.when .ahead { color: #e5b55d; }
+.when .ok { color: #9fb98c; }
+
+/* bars: the fill is what's used; the tick is where an even spend would be */
+.track { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,.07); }
+.big-track { height: 18px; border-radius: 9px; }
+.fill { height: 100%; border-radius: inherit; background: #d97757; }
+.codex .fill { background: #a7baa1; }
+.cursor .fill { background: #9fb2d6; }
+.fill.warn, .codex .fill.warn, .cursor .fill.warn { background: #e5b55d; }
+.fill.hot, .codex .fill.hot, .cursor .fill.hot,
+.fill.out, .codex .fill.out, .cursor .fill.out { background: #ee705e; }
+.tick { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px;
+  background: #eeeae5; opacity: .75; border-radius: 1px; }
+.big-track .tick { top: -6px; bottom: -6px; width: 3px; margin-left: -1.5px; }
+.big.warn, .rpct.warn { color: #e5b55d; }
+.big.hot, .rpct.hot, .rpct.out { color: #ee705e; }
+
+.row { display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center; margin: 16px 0 0; }
+.rlabel { width: 64px; font-size: 17px; color: #d0cac2; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row .track { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
+.rpct { width: 58px; text-align: right; font-size: 18px; font-variant-numeric: tabular-nums; }
+.rreset { width: 118px; text-align: right; font-size: 15px; color: #b4a18a; white-space: nowrap; }
+
+.spend { display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  background: #221913; border: 1px solid #2f241c; border-radius: 14px;
+  padding: 12px 22px; margin-top: 16px; }
+.slabel { font-size: 13px; color: #aaa59d; text-transform: uppercase; letter-spacing: .8px; margin-right: auto; }
+.slabel small { display: block; font-size: 11px; color: #8a847c; text-transform: none; letter-spacing: 0; margin-top: 2px; }
+.tile { font-size: 15px; color: #aaa59d; margin-left: 32px; white-space: nowrap; }
+.tile b { font-size: 28px; font-weight: 300; color: #eeeae5; font-variant-numeric: tabular-nums; margin-right: 4px; }
+.footer { font-size: 12px; color: #8a847c; margin: 10px 4px 0; }
+
+/* portrait and phones: one card per row */
+@media (orientation: portrait), (max-width: 680px) { .card { min-width: 0; -webkit-flex-basis: 100%; flex-basis: 100%; } }
+@media (orientation: portrait) { .verdict { font-size: 24px; } .big { font-size: 96px; } .pet { width: 120px; height: 120px; margin-top: -40px; } }
+@media (max-width: 680px) { .big { font-size: 64px; } .verdict { font-size: 20px; } .tile { margin-left: 14px; } .tile b { font-size: 20px; } }

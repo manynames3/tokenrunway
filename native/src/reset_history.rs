@@ -131,8 +131,9 @@ mod tests {
         assert!(!h.observe("codex-weekly", 99.0, now + 60_000, now, 7 * 24 * 3_600_000));
         assert!(h.observe("codex-5h", 6.0, now + 5 * 3_600_000 + 120_000, now + 120_000, 5 * 3_600_000));
         assert!(h.observe("codex-weekly", 2.0, now + 7 * 24 * 3_600_000 + 120_000, now + 120_000, 7 * 24 * 3_600_000));
-        assert_eq!(h.counts().pair(true), (1, 1));
-        assert_eq!(h.counts().pair(false), (0, 0));
+        let c = h.counts();
+        assert_eq!((c.codex_5h, c.codex_weekly), (1, 1));
+        assert_eq!((c.claude_5h, c.claude_weekly), (0, 0));
     }
     #[test]
     fn no_counter_on_rolling_deadline_or_no_usage_drop() {

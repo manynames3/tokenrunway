@@ -38,6 +38,16 @@ Everything is in tokens and percent, never in dollars. Without a connected accou
 
 Switching takes effect at once, with no restart.
 
+### The menu
+
+The menu leads with the limits, grouped under a header per service (Claude, Codex, Cursor). On macOS each limit is one monospaced row: its name, a ten-cell bar, the percent and its reset; the 5-hour rows add the time left (`4h 7m · 3:50 AM`). A row turns amber at the first heads-up threshold and red at the fire threshold, the same lines as the alerts and the 🔥. A long window whose reset is more than eight days out is labelled **Limit** rather than **Week**. One row sums the API-rate value for today, 7 days and 30 days; **Details** holds the per-service split and the fine print (partial estimates, that the value is not billed, the projected 5-hour windows before the weekly reset). The rows are enabled so macOS doesn't dim them; a click on one only closes the menu. Windows and Linux show the same rows as plain text, without bars. The menu is rebuilt only when what it shows changes.
+
+### Wall display
+
+**Wall display** in the menu serves a read-only page on the local network for a spare screen, such as an old iPad on a stand ([ADR-015](../decisions/ADR-015-wall-display-on-the-local-network.md)). It is off until switched on and remembered across restarts. While on, the menu shows its address by IP and by the Mac's `.local` name, and **Copy wall display link** puts it on the clipboard.
+
+The page answers one question from across the room, can I keep coding: a line across the top (**All clear**, **Watch your pace**, **Slow down**, or **out** with the wait and which service still has room), and a card per service led by the limit that stops you first. Each bar has a tick where an even spend would be by now; past it, the card says **ahead of pace** and when, at that rate, the limit runs out. A limit at 100% turns its card into a countdown to the reset. The page tints amber or red with the state, shows the pets in their mood (working, idle, on fire, tired when out, asleep when the reading is stale or signed out) and ends with the API-rate value. It is plain HTML and CSS that reloads every minute, with no JavaScript, so a decade-old Safari shows it.
+
 ## Moods
 
 | | | |

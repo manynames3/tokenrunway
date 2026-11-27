@@ -86,6 +86,10 @@ pub struct Usage {
     pub cost_30d: f64,
     pub priced_tokens_30d: u64,
     pub unpriced_tokens_30d: u64,
+    /// tokens in today / the last 7 days with no model price, so a period
+    /// with nothing priced reads "unpriced" rather than $0
+    pub unpriced_tokens_today: u64,
+    pub unpriced_tokens_7d: u64,
     pub tokens_per_min: u64,
     pub active: bool,
     pub sleeping: bool,
@@ -112,6 +116,8 @@ impl Usage {
             cost_30d: 0.0,
             priced_tokens_30d: 0,
             unpriced_tokens_30d: 0,
+            unpriced_tokens_today: 0,
+            unpriced_tokens_7d: 0,
             tokens_per_min: 0,
             active: false,
             sleeping: false,
@@ -218,6 +224,7 @@ impl Reader {
         let (mut today, mut week, mut month, mut last5m) = (0u64, 0u64, 0u64, 0u64);
         let (mut cost_today, mut cost_7d, mut cost_30d) = (0.0f64, 0.0, 0.0);
         let (mut priced_tokens_30d, mut unpriced_tokens_30d) = (0u64, 0u64);
+        let (mut unpriced_tokens_today, mut unpriced_tokens_7d) = (0u64, 0u64);
         let start7 = now - 7 * DAY_MS;
         let mut by_model = Tally::default();
         let mut by_project = Tally::default();
@@ -247,6 +254,12 @@ impl Reader {
                     }
                 } else {
                     unpriced_tokens_30d += t;
+                    if e.ts >= start7 {
+                        unpriced_tokens_7d += t;
+                    }
+                    if e.ts >= today_ms {
+                        unpriced_tokens_today += t;
+                    }
                 }
                 let idx = ((e.ts - start30) / DAY_MS).clamp(0, DAYS as i64 - 1) as usize;
                 days30[idx] += t;
@@ -338,6 +351,8 @@ impl Reader {
             cost_30d,
             priced_tokens_30d,
             unpriced_tokens_30d,
+            unpriced_tokens_today,
+            unpriced_tokens_7d,
             tokens_per_min: (last5m as f64 / 5.0).round() as u64,
             active,
             sleeping,

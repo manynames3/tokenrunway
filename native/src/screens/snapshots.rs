@@ -439,6 +439,8 @@ pub(super) fn with_codex(mut snap: Snapshot, working: bool) -> Snapshot {
         cost_30d: 0.0,
         priced_tokens_30d: 0,
         unpriced_tokens_30d: 0,
+        unpriced_tokens_today: 0,
+        unpriced_tokens_7d: 0,
     });
     snap.codex_found = Some((true, Some("plus".into())));
     snap
